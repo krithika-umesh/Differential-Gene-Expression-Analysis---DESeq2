@@ -1,0 +1,134 @@
+---
+title: "Gene_Expression_Analysis"
+author: "Krithika Umesh"
+date: '2022-11-24'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(edgeR)
+library(statmod)
+library(RColorBrewer)
+library(pheatmap)
+library(genefilter)
+library(readxl)
+library(clusterProfiler)
+library(enrichplot)
+library(ggnewscale)
+library(org.Hs.eg.db)
+library("simplifyEnrichment")
+```
+
+```{r, set working directory, include=FALSE}
+setwd("C:/Users/krith/Documents/Fall_2022_Courses/Systems_Biology/Project_1/Counts")
+files <- c("heart_5a.s_trimmed.sorted.count.txt","heart_5b.s_trimmed.sorted.count.txt","heart_6a.s_trimmed.sorted.count.txt","heart_6b.s_trimmed.sorted.count.txt","thyroid_5a.s_trimmed.sorted.count.txt","thyroid_5b.s_trimmed.sorted.count.txt","thyroid_5c.s_trimmed.sorted.count.txt","thyroid_5d.s_trimmed.sorted.count.txt")
+organ <- c("heart","heart","heart","heart","thyroid","thyroid","thyroid","thyroid")
+samples <- c("heart_5a","heart_5b","heart_6a","heart_6b","thyroid_5a","thyroid_5b","thyroid_5c","thyroid_5d")
+```
+
+```{r, DESeq Data, echo=FALSE}
+setwd("C:/Users/krith/Documents/Fall_2022_Courses/Systems_Biology/Project_1/Counts")
+sampleTable <- data.frame(sampleName=samples, fileName=files, condition=organ)
+project_data1 <- DESeqDataSetFromHTSeqCount(sampleTable=sampleTable, design=~condition)
+head(counts(project_data1))
+nrow(project_data1)
+project_data1 <- project_data1[rowSums(counts(project_data1))>1,]
+nrow(project_data1)
+rldata <- rlog(project_data1, blind = FALSE)
+distmatrix <- dist(t(assay(rldata)))
+distmatrix
+rldata$sizeFactor
+rldata$condition
+sampledistmat <- as.matrix(distmatrix)
+rownames(sampledistmat) <- paste(rldata$condition)
+colnames(sampledistmat) <- paste(rldata$condition)
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+#Sample distance heatmap
+pheatmap(sampledistmat,clustering_distance_rows=distmatrix, clustering_distance_cols=distmatrix, col=colors)
+#PCA
+plotPCA(rldata)
+```
+
+```{r, Gene Heatmap, echo=FALSE}
+genevar <- rowVars(assay(rldata))
+orderedgenevar <- order(genevar, decreasing=TRUE)
+highvargenes <- head(orderedgenevar, 50)
+matvargenes <- assay(rldata)[highvargenes,]
+matvargenes <- matvargenes - rowMeans(matvargenes)
+df_projectdata <- as.data.frame(colData(rldata)[,c("condition"), drop=FALSE])
+col_name <- paste(rownames(colData(rldata)),rldata$condition, sep='.')
+vargenemap <- pheatmap(matvargenes, annotation_col = df_projectdata, labels_col = col_name, fontsize_row = 5, main = "Gene Heatmap")
+```
+
+```{r, DGEList, echo=FALSE}
+#convert data into DGEList
+setwd("C:/Users/krith/Documents/Fall_2022_Courses/Systems_Biology/Project_1/Counts")
+project_data2 <-readDGE(files, group=organ, labels=samples)
+head(project_data1)
+head(project_data2)
+#scaling of factors
+project_datanorm <- calcNormFactors(project_data2)
+project_datanorm$samples
+project_datanorm$samples$group = c("H","H","H","H","T","T","T","T")
+plotMDS(project_datanorm)
+project_datanorm <- estimateDisp(project_datanorm)
+project_datanorm$common.dispersion
+plotBCV(project_datanorm)
+```
+
+```{r, Smear plot, echo=FALSE}
+#Exact test
+data_et <- exactTest(project_datanorm, pair = c("H","T"))
+summary(testdge <- decideTestsDGE(data_et))
+tags_de <- rownames(project_datanorm)[as.logical(testdge)]
+plotSmear(data_et, de.tags = tags_de)
+abline(h = c(-2, 2), col = "blue")
+#Estimate dispersion
+tissue_fac <- factor(c("H","H","H","H","T","T","T","T"))
+design_mat <- model.matrix(~tissue_fac)
+rownames(design_mat) <- colnames(project_datanorm)
+design_mat
+model_data <- project_datanorm
+model_data <- estimateDisp(model_data, design_mat, robust = TRUE)
+model_data$common.dispersion
+```
+
+```{r, Enrichment analysis, echo=FALSE}
+#Differentially expressed genes
+#diffexpgenes <- topTags(data_et,n=7700,p.value = 0.05)
+#head(diffexpgenes$table)
+#write all the differentially expressed genes to a file. Identify genes of interest and filter using logFC values and create another file. Read the file for further analysis
+diffexp <- read_xlsx("C:/Users/krith/Documents/Fall_2022_Courses/Systems_Biology/Project_1/diffexp.xlsx")
+diffexp <- as.data.frame(diffexp)
+#Perform enrichment
+enrichment_genes <- enrichGO(gene = diffexp$GeneSymbol, OrgDb = org.Hs.eg.db, ont = "BP", keyType = 'SYMBOL', readable = FALSE)
+barplot(enrichment_genes, x = 'GeneRatio', color = "p.adjust", font.size = 5, showCategory = 30)
+dotplot(enrichment_genes, x = "Count", font.size = 4, color = "qvalue", size="GeneRatio", showCategory = 30)
+foldchange <- diffexp$logFC
+names(foldchange) <- diffexp$GeneSymbol
+cnetplot(enrichment_genes, foldChange = foldchange, colorEdge = TRUE, cex_label_gene = 0.5, showCategory = 5)
+```
+
+```{r, create a subset, echo = FALSE}
+#Filter the observations containing immune response
+grep("immune response", enrichment_genes@result$Description)
+# Create a subset of enriched genes with the row indices obtained above
+subset_enrichedgenes <- subset_enrichResult(enrichment_genes, c(751,760,940,1626,1711,2358,2537,2837,2877,2933,2964,3154,3155,3172,3192,3368,3385,3479,3509,3539,3784,3809,3938,3973,4069,4100,4151,4288,4294,4359,4374,4415,4603,4710,4755,4793,4837,4917,4919,4948,4973,5019,5064,5070,5087,5132,5205,5357,5407,5515,5523,5582,5705,5710,5713,5725,5726,5747,5852,5953,6004,6007,6009,6037,6038,6046,6081,6082,6134,6161,6162,6282,6302,6304,6305,6308,6311,6330,6342,6347))
+summary(subset_enrichedgenes)
+head(subset_enrichedgenes@result)
+#Construct GO similarity matrix
+matrix_immuneresponse <- GO_similarity(subset_enrichedgenes@result$ID)
+head(matrix_immuneresponse)
+df_immuneresponse <- simplifyGO(matrix_immuneresponse)
+```
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
