@@ -1,4 +1,4 @@
-# Differential Gene Expression Analysis using DESeq2
+# Differential Gene Expression Analysis using EdgeR
 This repository aims to investigate differential gene expression between the heart and thyroid tissues, focusing on autoimmunity-related genes. The study seeks to uncover molecular distinctions contributing to autoimmunity, with the heart and thyroid selected as contrasting models for analysis.
 
 There is a rising prevalence of Autoimmune Disease (AD) in the US over the past three decades. AD arises from the body's immune system malfunction, attacking its own cells due to failure in distinguishing foreign invaders from self-antigens. While autoimmunity affects various organs, the heart appears relatively protected. The hypothesis behind this analysis was that cardiac tissue was less prone to autoimmunity than thyroid tissue which represents prevalent autoimmune disorders like Grave's Disease, Hashimoto Thyroiditis etc. In other words, the genes that were responsible for the autoimmune conditions in thyroid were not expressed significantly in the heart i.e., there was a significant differential gene expression between the two tissues. 
